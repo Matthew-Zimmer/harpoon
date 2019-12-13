@@ -1,0 +1,2 @@
+1. Write a library which abstracts the flow of multiple programs in a type-safe manner.
+2. Write an abstraction of multiple computers to a single one.

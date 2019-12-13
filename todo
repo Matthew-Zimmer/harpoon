@@ -1,0 +1,5 @@
+1. Process or threads as the main unit of work
+2. Create interface for abstract process
+3. Write the main function and parse the command line args to pass to the subprocess
+4. Create the request-response queue for processes
+4. Allow processes to communicate over networks

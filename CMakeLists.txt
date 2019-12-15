@@ -20,8 +20,9 @@ install(FILES harpoon-config.cmake DESTINATION lib/harpoon)
 
 
 #libs
-#find_Package(reflection REQUIRED)
-#target_link_libraries(harpoon PUBLIC reflection)
+find_Package(memory REQUIRED)
+
+target_link_libraries(harpoon PUBLIC memory)
 target_link_libraries(harpoon PUBLIC pthread)
 
 #test libs

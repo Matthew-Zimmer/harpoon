@@ -1,126 +1,67 @@
 #include "process.hpp"
+#include <reflection/variables.hpp>
 
-using namespace Slate;
-
-class Test : public Harpoon::Process<Test>
+namespace MY_PROJECT
 {
-    int i{ 0 };
-public:
-    using Input = 
+    using namespace Slate;
+    using namespace Harpoon;
 
-    Test() : Process{ "Test" } {}
-
-    int Main(std::string const& s)
+    namespace Variable
     {
-        return std::stoi(s) * 2;
+        using namespace Slate::Variable;
+        using Int0 = class : public Base<int>
+        {
+        public:
+            int& Int0()
+            {
+                return Variable();
+            }
+            int const& Int0() const
+            {
+                return Variable();
+            }
+        };
+
+        using Int1 = class : public Base<int>
+        {
+        public:
+            int& Int1()
+            {
+                return Variable();
+            }
+            int const& Int1() const
+            {
+                return Variable();
+            }
+        };
     }
+    namespace V = Variable;
+    
 
-    bool Active()
+    class Test : public Process<Test>
     {
-        return i++ < 5;
-    }
-};
-
-/*
-#include <type_traits>
-#include <utility>
-
-template <typename T, typename O, typename=void>
-class Object : public O
-{
-public:
-    using Process_Type = T;
-    using O::O;
-};
-
-template <typename T, typename O>
-class Object<T, O, std::enable_if_t<std::is_fundamental_v<O>>>
-{
-    O o;
-public:
-    using Process_Type = T;
-    template <typename Type>
-    Object(Type&& t) : o{ static_cast<O>(std::forward<Type>(t)) }
-    {}
-    operator O() { return o; }
-    operator O() const { return o; }
-};
-
-template <typename ... Types>
-class Wrap {};
-
-#include <tuple>
-
-namespace Variable
-{
-    using Amount = class X
-    {
-        double data;
+        int i{ 0 };
     public:
-        template <typename Type>
-        X(Type&& x) : data{ x }
-        {}
-
-        double& Amount()
+        Test() : Process{ "Test" } 
         {
-            return data;
+            this->queues.Items<Item<Test, V::Int0>>() = std::vector<Item<Test, V::Int0>>
+            { 
+                Item<Test, V::Int0>{ 1 },
+                Item<Test, V::Int0>{ 2 },
+                Item<Test, V::Int0>{ 3 },
+                Item<Test, V::Int0>{ 4 },
+                Item<Test, V::Int0>{ 5 },
+            };
         }
 
-        double const& Amount() const
+        Item<Test, V::Int1> Main(Item<Test, V::Int0> const& i)
         {
-            return data;
+            return Item<Test, V::Int1>{ i.Int0() * 2 };
         }
-    };
 
-    using Rate = class XX
-    {
-        int data;
-    public:
-        template <typename Type>
-        XX(Type&& x) : data{ x }
-        {}
-
-        int& Rate()
+        bool Active()
         {
-            return data;
-        }
-        
-        int const& Rate() const
-        {
-            return data;
+            return i++ < 5;
         }
     };
 }
-namespace V = Variable;
-
-template <typename ... T, typename ... O>
-class Object<Wrap<T...>, Wrap<O...>, void> : public O...
-{
-public:
-    using Process_Type = Wrap<T...>;
-};
-
-class P0 {};
-class P1 {};
-class P2 {};
-
-class A 
-{
-};
-class B
-{
-public:
-    explicit B(A a){}
-};
-
-auto f(Object<Wrap<P0, V::Amount>, Wrap<P1, V::Rate>> const& o) -> Object<P2, int>
-{
-    return Object<P2, int>{ o.Amount() * o.Rate() };
-}
-
-
-int main()
-{
-
-}
-*/

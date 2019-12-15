@@ -10,7 +10,7 @@ int main(int argc, char** argv)
     std::copy(argv, argv + argc, std::back_inserter(args));
 
     for (auto& p : Processes())
-        p->Create_Buffers();
+        p->Create_Queues();
 
     for (auto& p : Processes())
         p->Execute(args);

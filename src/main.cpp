@@ -13,6 +13,9 @@ int main(int argc, char** argv)
         p->Create_Queues();
 
     for (auto& p : Processes())
+        p->Init();
+
+    for (auto& p : Processes())
         p->Execute(args);
     
     return 0;//to fix return something based on the processes;

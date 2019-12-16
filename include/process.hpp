@@ -47,12 +47,13 @@ namespace Slate
         {
         protected:
             std::string name;
-            static Memory::Block queues;
+            static Memory::Block& Queues();
         public:
             Base_Process(std::string const& name);
             virtual ~Base_Process() = default;
             virtual int Execute(std::vector<std::string> const& args) = 0;
             virtual void Create_Queues() = 0;
+            virtual void Init() = 0;
         };
 
         inline std::vector<std::unique_ptr<Base_Process>>& Processes()
@@ -61,6 +62,18 @@ namespace Slate
             return processes;
         }
 
+        template <typename Type>
+        std::mutex push_mutex;
+
+        template <typename Type>
+        std::mutex pop_mutex;
+
+        template <typename Type>
+        std::condition_variable push_cv;
+
+        template <typename Type>
+        std::condition_variable pop_cv;
+
         template <typename Type, std::size_t Size_>
         class Queue
         {
@@ -68,12 +81,6 @@ namespace Slate
             using Iterator = typename std::array<Type, Size_>::iterator;
             Iterator first;
             Iterator last;
-
-            std::mutex push_mutex;
-            std::condition_variable push_cv;
-
-            std::mutex pop_mutex;
-            std::condition_variable pop_cv;
         public:
             Queue() : data{}, first{ data.begin() }, last{ data.begin() }
             {}
@@ -81,8 +88,8 @@ namespace Slate
             template <typename T>
             void Push(T&& t)
             {
-                std::unique_lock lock{ push_mutex };
-                push_cv.wait(lock, [this](){ return Size() < Size_; });
+                std::unique_lock lock{ push_mutex<Type> };
+                push_cv<Type>.wait(lock, [this](){ return Size() < Size_; });
 
                 if (last == data.end())
                     last = data.begin();
@@ -90,15 +97,15 @@ namespace Slate
 
                 lock.unlock();
                 if (Size() == 1)
-                    pop_cv.notify_one();
+                    pop_cv<Type>.notify_one();
                 else
-                    pop_cv.notify_all();
+                    pop_cv<Type>.notify_all();
             }
 
             Type& Pop()
             {
-                std::unique_lock lock{ pop_mutex };
-                pop_cv.wait(lock, [this](){ return Size() > 0; });
+                std::unique_lock lock{ pop_mutex<Type> };
+                pop_cv<Type>.wait(lock, [this](){ return Size() > 0; });
 
                 if (first == data.end())
                     first = data.begin();
@@ -106,9 +113,9 @@ namespace Slate
 
                 lock.unlock();
                 if (Size() == 1)
-                    push_cv.notify_one();
+                    push_cv<Type>.notify_one();
                 else
-                    push_cv.notify_all();
+                    push_cv<Type>.notify_all();
                 
                 return elem;
             }
@@ -197,7 +204,11 @@ namespace Slate
                 using Input_Type = std::decay_t<Meta::Unwrap<Meta::Args<Main_Function>>>;
                 using Output_Type = std::decay_t<Meta::Return_Type<Main_Function>>;
 
-                Buffer<Input_Type, Output_Type, 16> buffer { this->queues.Items<Input_Type>(), this->queues.Items<Output_Type>() };
+                Buffer<Input_Type, Output_Type, 16> buffer 
+                { 
+                    this->Queues().template Items<Queue<Input_Type, 16>>()[0], 
+                    this->Queues().template Items<Queue<Output_Type, 16>>()[0] 
+                };
 
                 threads.push_back(std::thread{ [&]()
                 {
@@ -210,7 +221,7 @@ namespace Slate
                         t.join();
 
                 for (int i = 0; i < 5; i++)
-                    std::cout << o.Pop() << std::endl;
+                    std::cout << this->Queues().template Items<Queue<Output_Type, 16>>()[0].Pop().Int1() << std::endl;
 
                 return 0;
             }
@@ -221,11 +232,11 @@ namespace Slate
                 using Input_Queue_Type = Queue<std::decay_t<Meta::Unwrap<Meta::Args<Main_Function>>>, 16>;
                 using Output_Queue_Type = Queue<std::decay_t<Meta::Return_Type<Main_Function>>, 16>;
 
-                if (!this->queues.Items<Input_Queue_Type>().size())
-                    this->queues.Add(Input_Queue_Type{});
+                if (!this->Queues().template Items<Input_Queue_Type>().size())
+                    this->Queues().template Emplace<Input_Queue_Type>();
 
-                if (!this->queues.Items<Output_Queue_Type>().size())
-                    this->queues.Add(Output_Queue_Type{});
+                if (!this->Queues().template Items<Output_Queue_Type>().size())
+                    this->Queues().template Emplace<Output_Queue_Type>();
             }
         };
 

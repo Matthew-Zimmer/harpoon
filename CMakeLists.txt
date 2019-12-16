@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 project(harpoon)
 
-add_library(harpoon "")
+add_library(harpoon STATIC "")
 add_executable(harpoon_test "")
 
 add_subdirectory(include)

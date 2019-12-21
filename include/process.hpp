@@ -15,45 +15,37 @@ namespace Slate
 {
     namespace Harpoon
     {
-        template <typename Type>
-        using Extract_Process = Meta::Extract<Type, 0>;
-
-        template <typename Type>
-        using Extract_Variable = Meta::Extract<Type, 1>;
-
-        template <typename ... Types>
-        class Complex_Item : public Is<Complex_Item<Types...>, Meta::Convert<Meta::For_Each<Meta::Wrap<Types...>, Extract_Variable>, Variables>>
+        template <typename Process, typename Variable>
+        class Item : public Variable
         {
         public:
-            using Process_Type = Meta::For_Each<Meta::Wrap<Types...>, Extract_Process>;
-            using Data_Type = Meta::For_Each<Meta::Wrap<Types...>, Extract_Variable>;
+            using Process_Type = Process;
+            using Variable_Type = Variable;
+
+            using Variable::Variable;
+
+            Item(Variable const& v) : Variable{ v }
+            {}
+            Item(Variable&& v) : Variable{ v }
+            {}
         };
 
-        template <typename P, typename V>
-        class Simple_Item : public Is<Simple_Item<P, V>, Variables<V>>
+        template <typename Process>
+        class Item<Process, void>
         {
         public:
-            using Process_Type = Meta::Wrap<P>;
-            using Data_Type = Meta::Wrap<V>;
+            using Process_Type = Process;
+            using Variable_Type = void;
         };
 
-        template <typename ... Types>
-        using Item = std::conditional_t<(Meta::Is_Container<Types> && ...), Complex_Item<Types...>, Simple_Item<Types...>>;
-    }
-
-    namespace Harpoon
-    {
         class Base_Process
         {
         protected:
             std::string name;
-            static Memory::Block& Queues();
         public:
             Base_Process(std::string const& name);
             virtual ~Base_Process() = default;
             virtual int Execute(std::vector<std::string> const& args) = 0;
-            virtual void Create_Queues() = 0;
-            virtual void Init() = 0;
         };
 
         inline std::vector<std::unique_ptr<Base_Process>>& Processes()
@@ -74,6 +66,8 @@ namespace Slate
         template <typename Type>
         std::condition_variable pop_cv;
 
+        
+
         template <typename Type, std::size_t Size_>
         class Queue
         {
@@ -82,6 +76,9 @@ namespace Slate
             Iterator first;
             Iterator last;
         public:
+
+            using Element_Type = Type;
+
             Queue() : data{}, first{ data.begin() }, last{ data.begin() }
             {}
 
@@ -102,7 +99,7 @@ namespace Slate
                     pop_cv<Type>.notify_all();
             }
 
-            Type& Pop()
+            Type Pop()
             {
                 std::unique_lock lock{ pop_mutex<Type> };
                 pop_cv<Type>.wait(lock, [this](){ return Size() > 0; });
@@ -127,51 +124,68 @@ namespace Slate
             }
         };
 
-        template <typename Input, typename Output, std::size_t Size>
+        template <typename Type>
+        constexpr bool Has_Output_Queue = !std::is_same_v<typename Type::Element_Type::Variable_Type, void>;
+
+        template <typename Input = void, typename Output = void>
         class Buffer
-        {
-            Queue<Input, Size>& input;
-            Queue<Output, Size>& output;
-        public:
-            Buffer(Queue<Input, Size>& input, Queue<Output, Size>& output) : input{ input }, output{ output }
-            {}
+        {};
 
+        template <>
+        class Buffer<void, void>
+        {
+            static Memory::Block queues;
+        protected:
+            template <typename Type>
+            Type& Queue()
+            {
+                return queues.Items<Type>().front();
+            }
+            template <typename Type>
+            void Create_Queue_If_Needed()
+            {
+                if (!queues.Items<Type>().size())
+                    queues.Items<Type>().emplace_back();
+            }
+
+            
+        };
+
+        template <typename ... Inputs, typename Output>
+        class Buffer<Meta::Wrap<Inputs...>, Output> : public Buffer<>
+        {
+        public:
+            Buffer()
+            {
+                if constexpr(Has_Output_Queue<Output>)
+                    Create_Queue_If_Needed<Output>();
+                (Create_Queue_If_Needed<Inputs>(), ...);
+            }
             template <typename Functor>
             void operator()(Functor&& f)
             {
-                output.Push(f(input.Pop()));
+                if constexpr(Has_Output_Queue<Output>)
+                    Queue<Output>().Push(f(Queue<Inputs>().Pop()...));
+                else
+                    f(Queue<Inputs>().Pop()...);
             }
         };
 
-        template <typename Output, std::size_t Size>
-        class Buffer<void, Output, Size>
+        template <typename Type>
+        using Output = Item<Type, Meta::Return_Type<decltype(&Type::Main)>>;
+
+        template <std::size_t Size>
+        class Input
         {
-            Queue<Output, Size>& output;
         public:
-            Buffer(Queue<Output, Size>& output) : output{ output }
-            {}
-
-            template <typename Functor>
-            void operator()(Functor&& f)
+            template <typename T>
+            class Builder
             {
-                output.Push(f());
-            }
+            public:
+                using Type = Meta::Wrap<Queue<std::decay_t<T>, Size>>;
+            };
         };
 
-        template <typename Input, std::size_t Size>
-        class Buffer<Input, void, Size>
-        {
-            Queue<Input, Size>& input;
-        public:
-            Buffer(Queue<Input, Size>& input) : input{ input }
-            {}
-
-            template <typename Functor>
-            void operator()(Functor&& f)
-            {
-                f(input.Pop());
-            }
-        };
         template <typename Type>
         class Process : public Base_Process
         {
@@ -185,9 +199,8 @@ namespace Slate
                 void operator()(){}
             };
             std::vector<std::thread> threads;
-        public:
-            static Hook hook;
-            
+            static Hook hook;           
+        public:    
             Process(std::string const& name) : Base_Process{ name }
             {
                 hook();
@@ -201,42 +214,23 @@ namespace Slate
             int Execute(std::vector<std::string> const& args) final
             {
                 using Main_Function = decltype(&Type::Main);
-                using Input_Type = std::decay_t<Meta::Unwrap<Meta::Args<Main_Function>>>;
-                using Output_Type = std::decay_t<Meta::Return_Type<Main_Function>>;
+                
+                using Input_Type =  Meta::For_Each<Meta::Args<Main_Function>, typename Input<32>::Builder>;
+                using Output_Type = Queue<Output<Type>, 32>;
 
-                Buffer<Input_Type, Output_Type, 16> buffer 
-                { 
-                    this->Queues().template Items<Queue<Input_Type, 16>>()[0], 
-                    this->Queues().template Items<Queue<Output_Type, 16>>()[0] 
-                };
+                Buffer<Input_Type, Output_Type> buffer;
 
                 threads.push_back(std::thread{ [&]()
                 {
                     while (Meta::Cast<Type>(*this).Active())
-                        buffer([&](auto& ... x){ return Meta::Cast<Type>(*this).Main(x...); });
+                        buffer([&](auto&& ... x){ return Meta::Cast<Type>(*this).Main(x...); });
                 } });
 
                 for(auto& t : threads)
                     if (t.joinable())
                         t.join();
 
-                for (int i = 0; i < 5; i++)
-                    std::cout << this->Queues().template Items<Queue<Output_Type, 16>>()[0].Pop().Int1() << std::endl;
-
                 return 0;
-            }
-
-            void Create_Queues() final
-            {
-                using Main_Function = decltype(&Type::Main);
-                using Input_Queue_Type = Queue<std::decay_t<Meta::Unwrap<Meta::Args<Main_Function>>>, 16>;
-                using Output_Queue_Type = Queue<std::decay_t<Meta::Return_Type<Main_Function>>, 16>;
-
-                if (!this->Queues().template Items<Input_Queue_Type>().size())
-                    this->Queues().template Emplace<Input_Queue_Type>();
-
-                if (!this->Queues().template Items<Output_Queue_Type>().size())
-                    this->Queues().template Emplace<Output_Queue_Type>();
             }
         };
 

@@ -81,7 +81,7 @@ namespace Slate
             {}
 
             template <typename T>
-            void Push(T t)
+            void Push(T&& t)
             {
                 std::unique_lock lock{ mutex<Type> };
                 push_cv<Type>.wait(lock, [this](){ return Size() < Size_; });

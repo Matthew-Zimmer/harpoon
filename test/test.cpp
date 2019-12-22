@@ -25,7 +25,7 @@ namespace MY_PROJECT
                 return this->Variable();
             }
         };
-        using Int0 = class : public Base2<int>
+        using Int0 = class X1 : public Base2<int>
         {
         public:
             using Base2::Base2;
@@ -37,9 +37,11 @@ namespace MY_PROJECT
             {
                 return Variable();
             }
+
+            constexpr static char const* Name{"Int0"};
         };
 
-        using Int1 = class : public Base2<int>
+        using Int1 = class X2 : public Base2<int>
         {
         public:
             using Base2::Base2;
@@ -51,6 +53,7 @@ namespace MY_PROJECT
             {
                 return Variable();
             }
+            constexpr static char const* Name{ "Int1" };
         };
     }
     namespace V = Variable;
@@ -70,7 +73,7 @@ namespace MY_PROJECT
 
         bool Active()
         {
-            return i++ < 20;
+            return i++ < 20000;
         }
     };
     
@@ -89,7 +92,7 @@ namespace MY_PROJECT
 
         bool Active()
         {
-            return i++ < 20;
+            return i++ < 20000;
         }
     };
 
@@ -107,7 +110,7 @@ namespace MY_PROJECT
 
         bool Active()
         {
-            return i++ < 20;
+            return i++ < 20000;
         }
     };
 }

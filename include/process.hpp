@@ -36,6 +36,8 @@ namespace Slate
         public:
             using Process_Type = Process;
             using Variable_Type = void;
+
+            constexpr static char const*  Name{"void"};
         };
 
         class Base_Process
@@ -45,7 +47,7 @@ namespace Slate
         public:
             Base_Process(std::string const& name);
             virtual ~Base_Process() = default;
-            virtual int Execute(std::vector<std::string> const& args) = 0;
+            virtual std::thread Execute(std::vector<std::string> const& args) = 0;
         };
 
         inline std::vector<std::unique_ptr<Base_Process>>& Processes()
@@ -55,18 +57,13 @@ namespace Slate
         }
 
         template <typename Type>
-        std::mutex push_mutex;
-
-        template <typename Type>
-        std::mutex pop_mutex;
+        std::mutex mutex;
 
         template <typename Type>
         std::condition_variable push_cv;
 
         template <typename Type>
         std::condition_variable pop_cv;
-
-        
 
         template <typename Type, std::size_t Size_>
         class Queue
@@ -75,22 +72,25 @@ namespace Slate
             using Iterator = typename std::array<Type, Size_>::iterator;
             Iterator first;
             Iterator last;
+            std::size_t size;
         public:
 
             using Element_Type = Type;
 
-            Queue() : data{}, first{ data.begin() }, last{ data.begin() }
+            Queue() : data{}, first{ data.begin() }, last{ data.begin() }, size{ 0 }
             {}
 
             template <typename T>
             void Push(T&& t)
             {
-                std::unique_lock lock{ push_mutex<Type> };
+                std::unique_lock lock{ mutex<Type> };
                 push_cv<Type>.wait(lock, [this](){ return Size() < Size_; });
+
+                *last++ = std::forward<T>(t);
+                ++size;
 
                 if (last == data.end())
                     last = data.begin();
-                *last++ = std::forward<T>(t);
 
                 lock.unlock();
                 if (Size() == 1)
@@ -101,12 +101,14 @@ namespace Slate
 
             Type Pop()
             {
-                std::unique_lock lock{ pop_mutex<Type> };
+                std::unique_lock lock{ mutex<Type> };
                 pop_cv<Type>.wait(lock, [this](){ return Size() > 0; });
+
+                auto& elem = *first++;
+                --size;
 
                 if (first == data.end())
                     first = data.begin();
-                auto& elem = *first++;
 
                 lock.unlock();
                 if (Size() == 1)
@@ -119,8 +121,7 @@ namespace Slate
 
             std::size_t Size()
             {
-                std::size_t dist = std::distance(first, last);
-                return first <= last ? dist : Size_ + dist;
+                return size;
             }
         };
 
@@ -134,33 +135,32 @@ namespace Slate
         template <>
         class Buffer<void, void>
         {
-            static Memory::Block queues;
+            static Memory::Block& Queues();
         protected:
             template <typename Type>
             Type& Queue()
             {
-                return queues.Items<Type>().front();
+                return Queues().Items<Type>().front();
             }
             template <typename Type>
-            void Create_Queue_If_Needed()
+            static void Create_Queue_If_Needed()
             {
-                if (!queues.Items<Type>().size())
-                    queues.Items<Type>().emplace_back();
+                if (!Queues().Items<Type>().size())
+                    Queues().Items<Type>().emplace_back();
             }
-
-            
         };
 
         template <typename ... Inputs, typename Output>
         class Buffer<Meta::Wrap<Inputs...>, Output> : public Buffer<>
         {
         public:
-            Buffer()
+            static void Create_Queues()
             {
                 if constexpr(Has_Output_Queue<Output>)
                     Create_Queue_If_Needed<Output>();
                 (Create_Queue_If_Needed<Inputs>(), ...);
             }
+
             template <typename Functor>
             void operator()(Functor&& f)
             {
@@ -195,6 +195,13 @@ namespace Slate
                 Hook()
                 {
                     Processes().push_back(std::make_unique<Type>());
+
+                    using Main_Function = decltype(&Type::Main);
+                
+                    using Input_Type =  Meta::For_Each<Meta::Args<Main_Function>, typename Input<16>::Builder>;
+                    using Output_Type = Queue<Output<Type>, 16>;
+
+                    Buffer<Input_Type, Output_Type>::Create_Queues();
                 }
                 void operator()(){}
             };
@@ -211,26 +218,29 @@ namespace Slate
                 return true;
             }
 
-            int Execute(std::vector<std::string> const& args) final
+            std::thread Execute(std::vector<std::string> const& args) final
             {
-                using Main_Function = decltype(&Type::Main);
-                
-                using Input_Type =  Meta::For_Each<Meta::Args<Main_Function>, typename Input<32>::Builder>;
-                using Output_Type = Queue<Output<Type>, 32>;
-
-                Buffer<Input_Type, Output_Type> buffer;
-
-                threads.push_back(std::thread{ [&]()
+                return std::thread{ [&]()
                 {
-                    while (Meta::Cast<Type>(*this).Active())
-                        buffer([&](auto&& ... x){ return Meta::Cast<Type>(*this).Main(x...); });
-                } });
+                    using Main_Function = decltype(&Type::Main);
+                
+                    using Input_Type =  Meta::For_Each<Meta::Args<Main_Function>, typename Input<16>::Builder>;
+                    using Output_Type = Queue<Output<Type>, 16>;
 
-                for(auto& t : threads)
-                    if (t.joinable())
-                        t.join();
+                    Buffer<Input_Type, Output_Type> buffer;
 
-                return 0;
+                    threads.push_back(std::thread{ [&]()
+                    {
+                        while (Meta::Cast<Type>(*this).Active())
+                            buffer([&](auto&& ... x){ return Meta::Cast<Type>(*this).Main(x...); });
+                    } });
+
+                    for(auto& t : threads)
+                        if (t.joinable())
+                            t.join();
+
+                    return 0;
+                } };
             }
         };
 

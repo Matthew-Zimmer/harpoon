@@ -104,7 +104,7 @@ namespace Slate
                 std::unique_lock lock{ mutex<Type> };
                 pop_cv<Type>.wait(lock, [this](){ return Size() > 0; });
 
-                auto& elem = *first++;
+                auto elem = *first++;
                 --size;
 
                 if (first == data.end())

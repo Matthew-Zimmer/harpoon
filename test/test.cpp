@@ -22,7 +22,7 @@ namespace MY_PROJECT
 
             operator Type const& () const
             {
-                return this->Variable();
+                return this->variable();
             }
         };
         using Int0 = class X1 : public Base2<int>
@@ -31,11 +31,11 @@ namespace MY_PROJECT
             using Base2::Base2;
             int& Int0()
             {
-                return Variable();
+                return this->variable();
             }
             int const& Int0() const
             {
-                return Variable();
+                return this->variable();
             }
 
             constexpr static char const* Name{"Int0"};
@@ -47,11 +47,11 @@ namespace MY_PROJECT
             using Base2::Base2;
             int& Int1()
             {
-                return Variable();
+                return this->variable();
             }
             int const& Int1() const
             {
-                return Variable();
+                return this->variable();
             }
             constexpr static char const* Name{ "Int1" };
         };

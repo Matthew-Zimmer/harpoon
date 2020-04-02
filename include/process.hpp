@@ -198,7 +198,7 @@ namespace Slate
 
                     using Main_Function = decltype(&Type::Main);
                 
-                    using Input_Type =  Meta::For_Each<Meta::Args<Main_Function>, typename Input<16>::Builder>;
+                    using Input_Type =  Meta::For_Each<Meta::Args<Main_Function>, Input<16>::Builder>;
                     using Output_Type = Queue<Output<Type>, 16>;
 
                     Buffer<Input_Type, Output_Type>::Create_Queues();
@@ -224,15 +224,15 @@ namespace Slate
                 {
                     using Main_Function = decltype(&Type::Main);
                 
-                    using Input_Type =  Meta::For_Each<Meta::Args<Main_Function>, typename Input<16>::Builder>;
+                    using Input_Type =  Meta::For_Each<Meta::Args<Main_Function>, Input<16>::Builder>;
                     using Output_Type = Queue<Output<Type>, 16>;
 
                     Buffer<Input_Type, Output_Type> buffer;
 
                     threads.push_back(std::thread{ [&]()
                     {
-                        while (Meta::Cast<Type>(*this).Active())
-                            buffer([&](auto&& ... x){ return Meta::Cast<Type>(*this).Main(x...); });
+                        while (Meta::cast<Type>(*this).Active())
+                            buffer([&](auto&& ... x){ return Meta::cast<Type>(*this).Main(x...); });
                     } });
 
                     for(auto& t : threads)
